@@ -304,8 +304,13 @@ bool SpiritHealerAction::Execute(Event /*event*/)
     uint32 dCount = AI_VALUE(uint32, "death count");
     int64 deadTime = time(nullptr) - corpse->GetGhostTime();
 
-    GraveyardStruct const* ClosestGrave =
-        GetGrave(dCount > 10 || deadTime > 15 * MINUTE || AI_VALUE(uint8, "durability") < 10);
+    // Always prefer the closest faction-appropriate graveyard for the bot's
+    // current location (BG team graveyard with cfbg fake team respected,
+    // instance exit graveyard, or zone graveyard in the open world). The
+    // starting-zone race-loop fallback inside GetGrave only runs when no
+    // graveyard is found, avoiding cross-map teleports to starter zones
+    // (e.g. Valley of Trials) for high-level bots after leaving a BG.
+    GraveyardStruct const* ClosestGrave = GetGrave(false);
 
     if (bot->GetDistance2d(ClosestGrave->x, ClosestGrave->y) < sPlayerbotAIConfig.sightDistance)
     {
