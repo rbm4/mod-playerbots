@@ -1,10 +1,10 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
 #include "ChangeStrategyAction.h"
-
 #include "Event.h"
 #include "PlayerbotRepository.h"
 #include "Playerbots.h"
@@ -49,11 +49,11 @@ bool ChangeNonCombatStrategyAction::Execute(Event event)
 
     uint32 account = bot->GetSession()->GetAccountId();
     if (sPlayerbotAIConfig.IsInRandomAccountList(account) && botAI->GetMaster() &&
-        botAI->GetMaster()->GetSession()->GetSecurity() < SEC_GAMEMASTER)
+        !botAI->GetMaster()->CanBeGameMaster())
     {
-        if (text.find("loot") != std::string::npos || text.find("gather") != std::string::npos)
+        if (text.find("loot") != std::string::npos)
         {
-            botAI->TellError("You can change any strategy except loot and gather");
+            botAI->TellError("You can change any strategy except loot");
             return false;
         }
     }

@@ -1,16 +1,18 @@
 /*
- * Copyright (C) 2016+ AzerothCore <www.azerothcore.org>, released under GNU AGPL v3 license, you may redistribute it
- * and/or modify it under version 3 of the License, or (at your option), any later version.
+ * This file is part of the mod-playerbots module for AzerothCore. See AUTHORS file for Copyright
+ * information; released under GNU GPL v2 license, redistribute/modify under version 2 of the License,
+ * or (at your option) any later version.
  */
 
-#ifndef _PLAYERBOT_RANDOMPLAYERBOTMGR_H
-#define _PLAYERBOT_RANDOMPLAYERBOTMGR_H
+#ifndef PLAYERBOTS_RANDOMPLAYERBOTMGR_H
+#define PLAYERBOTS_RANDOMPLAYERBOTMGR_H
 
+#include "GameTime.h"
 #include "NewRpgInfo.h"
 #include "ObjectGuid.h"
-#include "PlayerbotMgr.h"
-#include "GameTime.h"
 #include "PlayerbotCommandServer.h"
+#include "PlayerbotMgr.h"
+#include <unordered_set>
 
 struct BattlegroundInfo
 {
@@ -176,7 +178,7 @@ protected:
     void OnBotLoginInternal(Player* const bot) override;
 
 private:
-    RandomPlayerbotMgr() : PlayerbotHolder(), processTicks(0)
+    RandomPlayerbotMgr() : PlayerbotHolder()
     {
         this->playersLevel = sPlayerbotAIConfig.randombotStartingLevel;
 
@@ -240,14 +242,12 @@ private:
     uint32 GetZoneLevel(uint16 mapId, float teleX, float teleY, float teleZ);
     typedef void (RandomPlayerbotMgr::*ConsoleCommandHandler)(Player*);
     std::vector<Player*> players;
-    uint32 processTicks;
 
     // std::map<uint32, std::vector<WorldLocation>> rpgLocsCache;
     std::map<uint32, std::map<uint32, std::vector<WorldLocation>>> rpgLocsCacheLevel;
     std::map<TeamId, std::map<BattlegroundTypeId, std::vector<uint32>>> BattleMastersCache;
     std::unordered_map<uint32, BotEventCache> eventCache;
-    std::list<uint32> currentBots;
-    uint32 bgBotsCount;
+    std::unordered_set<uint32> currentBots;
     uint32 playersLevel;
 
     // Account lists
