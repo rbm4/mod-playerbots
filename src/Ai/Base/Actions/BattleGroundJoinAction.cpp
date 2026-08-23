@@ -14,6 +14,34 @@
 #include "Playerbots.h"
 #include "PositionValue.h"
 
+namespace
+{
+PvPDifficultyEntry const* GetBattlegroundBracketForQueue(BattlegroundQueueTypeId queueTypeId, uint8 level)
+{
+    BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+    if (Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId))
+        if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), level))
+            return pvpDiff;
+
+    if (queueTypeId != BATTLEGROUND_QUEUE_RB)
+        return nullptr;
+
+    BattlegroundTypeId fallbackTypes[] = { BATTLEGROUND_WS, BATTLEGROUND_AB, BATTLEGROUND_EY, BATTLEGROUND_AV,
+                                           BATTLEGROUND_SA, BATTLEGROUND_IC };
+    for (BattlegroundTypeId fallbackType : fallbackTypes)
+    {
+        Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(fallbackType);
+        if (!bg)
+            continue;
+
+        if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), level))
+            return pvpDiff;
+    }
+
+    return nullptr;
+}
+}
+
 bool BGJoinAction::Execute(Event /*event*/)
 {
     uint32 queueType = AI_VALUE(uint32, "bg type");
@@ -30,8 +58,7 @@ bool BGJoinAction::Execute(Event /*event*/)
         if (!bg)
             return false;
 
-        uint32 mapId = bg->GetMapId();
-        PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+        PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(queueTypeId, bot->GetLevel());
         if (!pvpDiff)
             return false;
 
@@ -206,9 +233,7 @@ bool BGJoinAction::canJoinBg(BattlegroundQueueTypeId queueTypeId, BattlegroundBr
         return false;
 
     // check if the bracket exists for the bot's level for the specific Battleground/Arena type
-    Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
-    uint32 mapId = bg->GetMapId();
-    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(queueTypeId, bot->GetLevel());
     if (!pvpDiff)
         return false;
 
@@ -395,8 +420,7 @@ bool BGJoinAction::JoinQueue(uint32 type)
     if (!bg)
         return false;
 
-    uint32 mapId = bg->GetMapId();
-    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(queueTypeId, bot->GetLevel());
     if (!pvpDiff)
         return false;
 
@@ -798,9 +822,7 @@ bool BGStatusAction::Execute(Event event)
         return false;
 
     BattlegroundBracketId bracketId;
-    Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(_bgTypeId);
-    mapId = bg->GetMapId();
-    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+    PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(queueTypeId, bot->GetLevel());
     if (pvpDiff)
         bracketId = pvpDiff->GetBracketId();
 

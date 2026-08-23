@@ -54,6 +54,45 @@ struct GuidClassRaceInfo
     uint32 rRace;
 };
 
+namespace
+{
+PvPDifficultyEntry const* GetBattlegroundBracketForQueue(BattlegroundQueueTypeId queueTypeId, uint8 level,
+                                                         uint8 bracketId = MAX_BATTLEGROUND_BRACKETS)
+{
+    BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
+    Battleground* bg = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId);
+
+    if (bracketId < MAX_BATTLEGROUND_BRACKETS && bg)
+        if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketById(bg->GetMapId(), BattlegroundBracketId(bracketId)))
+            return pvpDiff;
+
+    if (bg)
+        if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), level))
+            return pvpDiff;
+
+    if (queueTypeId != BATTLEGROUND_QUEUE_RB)
+        return nullptr;
+
+    BattlegroundTypeId fallbackTypes[] = { BATTLEGROUND_WS, BATTLEGROUND_AB, BATTLEGROUND_EY, BATTLEGROUND_AV,
+                                           BATTLEGROUND_SA, BATTLEGROUND_IC };
+    for (BattlegroundTypeId fallbackType : fallbackTypes)
+    {
+        bg = sBattlegroundMgr->GetBattlegroundTemplate(fallbackType);
+        if (!bg)
+            continue;
+
+        if (bracketId < MAX_BATTLEGROUND_BRACKETS)
+            if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketById(bg->GetMapId(), BattlegroundBracketId(bracketId)))
+                return pvpDiff;
+
+        if (PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(bg->GetMapId(), level))
+            return pvpDiff;
+    }
+
+    return nullptr;
+}
+}
+
 void PrintStatsThread() { sRandomPlayerbotMgr.PrintStats(); }
 
 void activatePrintStatsThread()
@@ -937,26 +976,28 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
+            BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+            GroupQueueInfo ginfo;
+            bool hasGroupInfo = bgQueue.GetPlayerGroupInfoData(player->GetGUID(), &ginfo);
+            BattlegroundQueueTypeId dataQueueTypeId =
+                hasGroupInfo && ginfo.BgTypeId == BATTLEGROUND_RB ? BATTLEGROUND_QUEUE_RB : queueTypeId;
+
             // Check if real player is able to create/join this queue
-            BattlegroundTypeId bgTypeId = sBattlegroundMgr->BGTemplateId(queueTypeId);
-            uint32 mapId = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId)->GetMapId();
-            PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, player->GetLevel());
+            PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(
+                dataQueueTypeId, player->GetLevel(), hasGroupInfo ? ginfo.BracketId : MAX_BATTLEGROUND_BRACKETS);
             if (!pvpDiff)
                 continue;
 
             // If player is allowed, populate the BattlegroundData with the appropriate level requirements
             BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
-            BattlegroundData[queueTypeId][bracketId].minLevel = pvpDiff->minLevel;
-            BattlegroundData[queueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
+            BattlegroundData[dataQueueTypeId][bracketId].minLevel = pvpDiff->minLevel;
+            BattlegroundData[dataQueueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
 
             // Arena logic
             bool isRated = false;
-            if (BattlegroundMgr::BGArenaType(queueTypeId))
+            if (BattlegroundMgr::BGArenaType(dataQueueTypeId))
             {
-                BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
-                GroupQueueInfo ginfo;
-
-                if (bgQueue.GetPlayerGroupInfoData(player->GetGUID(), &ginfo))
+                if (hasGroupInfo)
                 {
                     isRated = ginfo.IsRated;
                 }
@@ -966,17 +1007,17 @@ void RandomPlayerbotMgr::CheckBgQueue()
                     isRated = true;
 
                 if (isRated)
-                    BattlegroundData[queueTypeId][bracketId].ratedArenaPlayerCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].ratedArenaPlayerCount++;
                 else
-                    BattlegroundData[queueTypeId][bracketId].skirmishArenaPlayerCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].skirmishArenaPlayerCount++;
             }
             // BG Logic
             else
             {
                 if (teamId == TEAM_ALLIANCE)
-                    BattlegroundData[queueTypeId][bracketId].bgAlliancePlayerCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].bgAlliancePlayerCount++;
                 else
-                    BattlegroundData[queueTypeId][bracketId].bgHordePlayerCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].bgHordePlayerCount++;
 
                 // If a player has joined the BG, update the instance count in BattlegroundData (for consistency)
                 if (player->InBattleground())
@@ -984,27 +1025,27 @@ void RandomPlayerbotMgr::CheckBgQueue()
                     std::vector<uint32>* instanceIds = nullptr;
                     uint32 instanceId = player->GetBattleground()->GetInstanceID();
 
-                    instanceIds = &BattlegroundData[queueTypeId][bracketId].bgInstances;
+                    instanceIds = &BattlegroundData[dataQueueTypeId][bracketId].bgInstances;
                     if (instanceIds &&
                         std::find(instanceIds->begin(), instanceIds->end(), instanceId) == instanceIds->end())
                         instanceIds->push_back(instanceId);
 
-                    BattlegroundData[queueTypeId][bracketId].bgInstanceCount = instanceIds->size();
+                    BattlegroundData[dataQueueTypeId][bracketId].bgInstanceCount = instanceIds->size();
                 }
             }
 
             if (!player->IsInvitedForBattlegroundInstance() && !player->InBattleground())
             {
-                if (BattlegroundMgr::BGArenaType(queueTypeId))
+                if (BattlegroundMgr::BGArenaType(dataQueueTypeId))
                 {
                     if (isRated)
-                        BattlegroundData[queueTypeId][bracketId].activeRatedArenaQueue = 1;
+                        BattlegroundData[dataQueueTypeId][bracketId].activeRatedArenaQueue = 1;
                     else
-                        BattlegroundData[queueTypeId][bracketId].activeSkirmishArenaQueue = 1;
+                        BattlegroundData[dataQueueTypeId][bracketId].activeSkirmishArenaQueue = 1;
                 }
                 else
                 {
-                    BattlegroundData[queueTypeId][bracketId].activeBgQueue = 1;
+                    BattlegroundData[dataQueueTypeId][bracketId].activeBgQueue = 1;
                 }
             }
         }
@@ -1028,23 +1069,26 @@ void RandomPlayerbotMgr::CheckBgQueue()
             if (queueTypeId == BATTLEGROUND_QUEUE_NONE)
                 continue;
 
-            BattlegroundTypeId bgTypeId = sBattlegroundMgr->BGTemplateId(queueTypeId);
-            uint32 mapId = sBattlegroundMgr->GetBattlegroundTemplate(bgTypeId)->GetMapId();
-            PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketByLevel(mapId, bot->GetLevel());
+            BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
+            GroupQueueInfo ginfo;
+            bool hasGroupInfo = bgQueue.GetPlayerGroupInfoData(guid, &ginfo);
+            BattlegroundQueueTypeId dataQueueTypeId =
+                hasGroupInfo && ginfo.BgTypeId == BATTLEGROUND_RB ? BATTLEGROUND_QUEUE_RB : queueTypeId;
+
+            PvPDifficultyEntry const* pvpDiff = GetBattlegroundBracketForQueue(
+                dataQueueTypeId, bot->GetLevel(), hasGroupInfo ? ginfo.BracketId : MAX_BATTLEGROUND_BRACKETS);
             if (!pvpDiff)
                 continue;
 
             BattlegroundBracketId bracketId = pvpDiff->GetBracketId();
-            BattlegroundData[queueTypeId][bracketId].minLevel = pvpDiff->minLevel;
-            BattlegroundData[queueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
+            BattlegroundData[dataQueueTypeId][bracketId].minLevel = pvpDiff->minLevel;
+            BattlegroundData[dataQueueTypeId][bracketId].maxLevel = pvpDiff->maxLevel;
 
-            if (BattlegroundMgr::BGArenaType(queueTypeId))
+            if (BattlegroundMgr::BGArenaType(dataQueueTypeId))
             {
                 bool isRated = false;
-                BattlegroundQueue& bgQueue = sBattlegroundMgr->GetBattlegroundQueue(queueTypeId);
-                GroupQueueInfo ginfo;
 
-                if (bgQueue.GetPlayerGroupInfoData(guid, &ginfo))
+                if (hasGroupInfo)
                 {
                     isRated = ginfo.IsRated;
                 }
@@ -1053,16 +1097,16 @@ void RandomPlayerbotMgr::CheckBgQueue()
                     isRated = true;
 
                 if (isRated)
-                    BattlegroundData[queueTypeId][bracketId].ratedArenaBotCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].ratedArenaBotCount++;
                 else
-                    BattlegroundData[queueTypeId][bracketId].skirmishArenaBotCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].skirmishArenaBotCount++;
             }
             else
             {
                 if (teamId == TEAM_ALLIANCE)
-                    BattlegroundData[queueTypeId][bracketId].bgAllianceBotCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].bgAllianceBotCount++;
                 else
-                    BattlegroundData[queueTypeId][bracketId].bgHordeBotCount++;
+                    BattlegroundData[dataQueueTypeId][bracketId].bgHordeBotCount++;
             }
 
             if (bot->InBattleground())
@@ -1079,17 +1123,17 @@ void RandomPlayerbotMgr::CheckBgQueue()
                     if (bot->GetBattleground()->isRated())
                     {
                         isRated = true;
-                        instanceIds = &BattlegroundData[queueTypeId][bracketId].ratedArenaInstances;
+                        instanceIds = &BattlegroundData[dataQueueTypeId][bracketId].ratedArenaInstances;
                     }
                     else
                     {
-                        instanceIds = &BattlegroundData[queueTypeId][bracketId].skirmishArenaInstances;
+                        instanceIds = &BattlegroundData[dataQueueTypeId][bracketId].skirmishArenaInstances;
                     }
                 }
                 // BG Logic
                 else
                 {
-                    instanceIds = &BattlegroundData[queueTypeId][bracketId].bgInstances;
+                    instanceIds = &BattlegroundData[dataQueueTypeId][bracketId].bgInstances;
                 }
 
                 if (instanceIds &&
@@ -1099,13 +1143,13 @@ void RandomPlayerbotMgr::CheckBgQueue()
                 if (isArena)
                 {
                     if (isRated)
-                        BattlegroundData[queueTypeId][bracketId].ratedArenaInstanceCount = instanceIds->size();
+                        BattlegroundData[dataQueueTypeId][bracketId].ratedArenaInstanceCount = instanceIds->size();
                     else
-                        BattlegroundData[queueTypeId][bracketId].skirmishArenaInstanceCount = instanceIds->size();
+                        BattlegroundData[dataQueueTypeId][bracketId].skirmishArenaInstanceCount = instanceIds->size();
                 }
                 else
                 {
-                    BattlegroundData[queueTypeId][bracketId].bgInstanceCount = instanceIds->size();
+                    BattlegroundData[dataQueueTypeId][bracketId].bgInstanceCount = instanceIds->size();
                 }
             }
         }
