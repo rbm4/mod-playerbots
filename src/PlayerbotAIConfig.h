@@ -236,12 +236,14 @@ public:
     std::string randomBotAutoJoinAVBrackets;
     std::string randomBotAutoJoinABBrackets;
     std::string randomBotAutoJoinWSBrackets;
+    std::string randomBotAutoJoinRBBrackets;
 
     uint32 randomBotAutoJoinBGICCount;
     uint32 randomBotAutoJoinBGEYCount;
     uint32 randomBotAutoJoinBGAVCount;
     uint32 randomBotAutoJoinBGABCount;
     uint32 randomBotAutoJoinBGWSCount;
+    uint32 randomBotAutoJoinBGRBCount;
 
     uint32 randomBotAutoJoinArenaBracket;
 
