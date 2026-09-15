@@ -11,11 +11,36 @@
 #include "Event.h"
 #include "GroupMgr.h"
 #include "PlayerbotAI.h"
+#include "PlayerbotFactory.h"
 #include "Playerbots.h"
 #include "PositionValue.h"
 
 namespace
 {
+bool EnsureBattlegroundTalents(Player* player)
+{
+    if (!player || !sRandomPlayerbotMgr.IsRandomBot(player) || player->CalculateTalentsPoints() == 0)
+        return false;
+
+    uint8 talentTreePoints[3] = {0, 0, 0};
+    player->GetTalentTreePoints(talentTreePoints);
+    if (talentTreePoints[0] || talentTreePoints[1] || talentTreePoints[2])
+        return false;
+
+    PlayerbotFactory factory(player, player->GetLevel());
+    uint32 const specIndex = factory.InitTalentsTree(false, true, true);
+    sRandomPlayerbotMgr.SetValue(player->GetGUID().GetCounter(), "specNo", specIndex + 1);
+    factory.InitGlyphs(false);
+    factory.InitPetTalents();
+
+    if (PlayerbotAI* botAI = GET_PLAYERBOT_AI(player))
+        botAI->ResetStrategies(false);
+
+    LOG_INFO("playerbots", "Repaired missing talents for battleground bot {} <{}> using premade spec {}",
+             player->GetGUID().ToString().c_str(), player->GetName(), specIndex);
+    return true;
+}
+
 PvPDifficultyEntry const* GetBattlegroundBracketForQueue(BattlegroundQueueTypeId queueTypeId, uint8 level)
 {
     BattlegroundTypeId bgTypeId = BattlegroundMgr::BGTemplateId(queueTypeId);
@@ -468,6 +493,17 @@ bool BGJoinAction::JoinQueue(uint32 type)
     // sRandomPlayerbotMgr.Refresh(bot);
 
     bool joinAsGroup = bot->GetGroup() && bot->GetGroup()->GetLeaderGUID() == bot->GetGUID();
+
+    EnsureBattlegroundTalents(bot);
+    if (joinAsGroup)
+    {
+        for (GroupReference* reference = bot->GetGroup()->GetFirstMember(); reference; reference = reference->next())
+        {
+            Player* member = reference->GetSource();
+            if (member && member != bot)
+                EnsureBattlegroundTalents(member);
+        }
+    }
 
     // in wotlk only arena requires battlemaster guid
     // ObjectGuid guid = isArena ? unit->GetGUID() : bot->GetGUID(); //not used, line marked for removal.
@@ -1091,7 +1127,9 @@ bool BGStatusCheckAction::isUseful() { return bot->InBattlegroundQueue(); }
 bool BGStrategyCheckAction::Execute(Event /*event*/)
 {
     bool inside_bg = bot->InBattleground() && bot->GetBattleground();
-    ;
+    if (inside_bg && EnsureBattlegroundTalents(bot))
+        return true;
+
     if (!inside_bg && botAI->HasStrategy("battleground", BOT_STATE_NON_COMBAT))
     {
         botAI->ResetStrategies();
