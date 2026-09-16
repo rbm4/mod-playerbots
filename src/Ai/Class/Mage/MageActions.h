@@ -53,10 +53,10 @@ public:
     CastArcaneIntellectOnPartyAction(PlayerbotAI* botAI) : GroupBuffOnPartyAction(botAI, "arcane intellect") {}
 };
 
-class CastFocusMagicOnPartyAction : public CastSpellAction
+class CastFocusMagicOnSelfAction : public CastSpellAction
 {
 public:
-    CastFocusMagicOnPartyAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "focus magic") {}
+    CastFocusMagicOnSelfAction(PlayerbotAI* botAI) : CastSpellAction(botAI, "focus magic") {}
     Unit* GetTarget() override;
 };
 

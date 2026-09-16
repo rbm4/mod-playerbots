@@ -232,7 +232,7 @@ public:
         creators["fire ward"] = &MageAiObjectContextInternal::fire_ward;
         creators["frost ward"] = &MageAiObjectContextInternal::frost_ward;
         creators["mirror image"] = &MageAiObjectContextInternal::mirror_image;
-        creators["focus magic on party"] = &MageAiObjectContextInternal::focus_magic_on_party;
+        creators["focus magic on self"] = &MageAiObjectContextInternal::focus_magic_on_self;
         creators["blink back"] = &MageAiObjectContextInternal::blink_back;
         creators["use mana sapphire"] = &MageAiObjectContextInternal::use_mana_sapphire;
         creators["use mana emerald"] = &MageAiObjectContextInternal::use_mana_emerald;
@@ -293,7 +293,7 @@ private:
     static Action* evocation(PlayerbotAI* botAI) { return new CastEvocationAction(botAI); }
     static Action* counterspell_on_enemy_healer(PlayerbotAI* botAI) { return new CastCounterspellOnEnemyHealerAction(botAI); }
     static Action* mirror_image(PlayerbotAI* botAI) { return new CastMirrorImageAction(botAI); }
-    static Action* focus_magic_on_party(PlayerbotAI* botAI) { return new CastFocusMagicOnPartyAction(botAI); }
+    static Action* focus_magic_on_self(PlayerbotAI* botAI) { return new CastFocusMagicOnSelfAction(botAI); }
     static Action* blink_back(PlayerbotAI* botAI) { return new CastBlinkBackAction(botAI); }
     static Action* use_mana_sapphire(PlayerbotAI* botAI) { return new UseManaSapphireAction(botAI); }
     static Action* use_mana_emerald(PlayerbotAI* botAI) { return new UseManaEmeraldAction(botAI); }

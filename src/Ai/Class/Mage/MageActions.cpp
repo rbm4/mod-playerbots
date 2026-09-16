@@ -5,7 +5,6 @@
  */
 
 #include "MageActions.h"
-#include "PlayerbotAIConfig.h"
 #include "Playerbots.h"
 #include "ServerFacade.h"
 #include "SharedDefines.h"
@@ -108,44 +107,9 @@ bool CastBlastWaveAction::isUseful()
     return targetClose;
 }
 
-Unit* CastFocusMagicOnPartyAction::GetTarget()
+Unit* CastFocusMagicOnSelfAction::GetTarget()
 {
-    Group* group = bot->GetGroup();
-    if (!group)
-        return nullptr;
-
-    Unit* casterDps = nullptr;
-    Unit* healer = nullptr;
-    Unit* target = nullptr;
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive() || member->GetMap() != bot->GetMap() ||
-            bot->GetDistance(member) > sPlayerbotAIConfig.spellDistance || member->HasAura(54646))  // Focus Magic
-        {
-            continue;
-        }
-
-        if (member->getClass() == CLASS_MAGE)
-            return member;
-
-        if (!casterDps && botAI->IsCaster(member) && botAI->IsDps(member))
-            casterDps = member;
-
-        if (!healer && botAI->IsHeal(member))
-            healer = member;
-
-        if (!target)
-            target = member;
-    }
-
-    if (casterDps)
-        return casterDps;
-
-    if (healer)
-        return healer;
-
-    return target;
+    return bot;
 }
 
 bool CastBlinkBackAction::Execute(Event event)

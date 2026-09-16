@@ -74,23 +74,7 @@ bool FrostbiteOnTargetTrigger::IsActive()
 bool NoFocusMagicTrigger::IsActive()
 {
     constexpr uint32 SPELL_FOCUS_MAGIC = 54646;
-    if (!bot->HasSpell(SPELL_FOCUS_MAGIC))
-        return false;
-
-    Group* group = bot->GetGroup();
-    if (!group)
-        return false;
-
-    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
-    {
-        Player* member = ref->GetSource();
-        if (!member || member == bot || !member->IsAlive())
-            continue;
-
-        if (member->HasAura(SPELL_FOCUS_MAGIC, bot->GetGUID()))
-            return false;
-    }
-    return true;
+    return bot->HasSpell(SPELL_FOCUS_MAGIC) && !bot->HasAura(SPELL_FOCUS_MAGIC, bot->GetGUID());
 }
 
 bool DeepFreezeCooldownTrigger::IsActive()
