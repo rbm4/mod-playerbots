@@ -1,146 +1,90 @@
 # AGENTS.md
 
-## Scope
+mod-playerbots is an AzerothCore module that adds AI-controlled player bots to a
+World of Warcraft 3.3.5a (WotLK) server. It is C++20, built as part of the
+AzerothCore CMake tree, and backed by MySQL.
 
-These instructions apply to the entire `mod-playerbots` repository.
+Design philosophy: **stability, performance, and predictability over behavioral
+realism.** Every action, trigger, and value runs per bot, per tick, across
+thousands of bots. Default behaviour must be cheap; expensive behaviour is opt-in.
 
-## Project identity
+The module is its own repository, checked out at `modules/mod-playerbots/` inside
+an AzerothCore fork. The fork's `AGENTS.md` and `.agents/docs/` apply as a base;
+for paths under this module, this file and `.agents/docs/` win where they differ.
+The fork's SQL placement, `--author` attribution, and e2e rules do not apply here.
 
-`mod-playerbots` adds player-controlled alt bots and autonomous random bots to a World of Warcraft 3.3.5a AzerothCore server. It is not standalone. It requires the `Playerbot` branch of `mod-playerbots/azerothcore-wotlk`; stock AzerothCore is not a compatible build target.
+## Agent rules
 
-The module combines four concerns:
+- **Do not configure or build unless explicitly asked.** Builds are slow and rarely
+  needed for code changes. Verify without a build instead: run
+  `python apps/codestyle/codestyle-cpp.py` from the module root (the CI check),
+  `clang-format --dry-run --Werror <file>` on touched files, and grep the creator
+  tables for every new action, trigger, or strategy name.
+- Only build inside the custom core,
+  [mod-playerbots/azerothcore-wotlk](https://github.com/mod-playerbots/azerothcore-wotlk); upstream
+  AzerothCore will not compile this module. Branches pair up: module `test-staging` builds against core `test-staging`, module `master` against core `Playerbot`.
+- PRs target `test-staging`, never `master`; `check_pr_source.yml` enforces it.
+- **Never edit SQL under `data/sql/*/base/`, `data/sql/playerbots/create/`, or
+  `data/sql/playerbots/archive/`.** Those are snapshots maintainers regenerate. New
+  SQL is a dated file under the matching `data/sql/<db>/updates/` directory.
+- Formatting follows `.clang-format` and `.editorconfig`: UTF-8, LF, 4-space indent
+  (tabs forbidden), max 120 columns, trailing newline, no trailing whitespace.
+- Credit upstream authors: ported GPLv2 code keeps its notice and gets a
+  `Co-authored-by:` trailer per original author.
+- Planning docs go in `.agents/plans/<task-slug>/` (gitignored), named
+  `<task-slug>.<TYPE>.md` (`PLAN`, `REQUIREMENTS`, `ANALYSIS`, …).
 
-1. AzerothCore integration through scripts, hooks, sessions, packets, and a dedicated database.
-2. Bot lifecycle management for player-owned, random, addclass, and self bots.
-3. A named-object AI framework composed of strategies, triggers, actions, values, and multipliers.
-4. World simulation services such as travel, equipment, quests, guilds, battlegrounds, raids, dungeons, speech, and RPG behavior.
+## Mandatory reading per task
 
-## Start here
+Read the matching doc(s) BEFORE starting the task:
 
-Before changing code, read the documents relevant to the task:
+- Writing or modifying C++ → `.agents/docs/cpp-guidelines.md` and
+  `.agents/docs/cpp-playerbots.md`
+- Touching a strategy, action, trigger, value, multiplier, or `AiFactory.cpp` →
+  also `.agents/docs/ai-engine.md`
+- Creating or modifying SQL, or adding bot chat text → `.agents/docs/sql-guidelines.md`
+- Reviewing a changeset or PR → `.agents/docs/code-review.md`
+- Self-reviewing, or opening or updating a PR → also `.agents/docs/self-review-rules.md`
+- Writing a commit, or opening or updating a PR → `.agents/docs/pull-requests.md`;
+  the `pr-title` skill proposes titles, the body is human-authored
+- Capturing a lesson or adding/updating agent docs → `.agents/docs/README.md`
 
-- Documentation index and maintenance contract: [`.docs/README.md`](.docs/README.md)
-- Architectural overview and dependency map: [`.docs/architecture/overview.md`](.docs/architecture/overview.md)
-- Login, update, command, logout, and threading flows: [`.docs/architecture/runtime-lifecycle.md`](.docs/architecture/runtime-lifecycle.md)
-- Strategy, trigger, action, value, and engine model: [`.docs/architecture/ai-engine.md`](.docs/architecture/ai-engine.md)
-- Configuration, databases, SQL, caches, and localization: [`.docs/architecture/data-and-configuration.md`](.docs/architecture/data-and-configuration.md)
-- Subsystem ownership and interaction catalog: [`.docs/subsystems/catalog.md`](.docs/subsystems/catalog.md)
-- Safe AI extension workflow: [`.docs/development/extending-ai.md`](.docs/development/extending-ai.md)
-- Feature documentation index: [`.docs/features/README.md`](.docs/features/README.md)
+## Repository layout
 
-Use code as the final source of truth. When code and documentation disagree, verify the runtime path, fix the code or documentation as appropriate, and record the result in the same change.
+- `src/Bot/` — bot runtime: `PlayerbotAI` (per-bot tick), `PlayerbotMgr`,
+  `RandomPlayerbotMgr`, `Engine/` (Strategy-Trigger-Action engine, `Multiplier`,
+  action queue), `Factory/` (bot creation and gearing), `Cmd/`, `Debug/`.
+- `src/Ai/Base/` — shared strategies, actions, triggers, values used by every class.
+- `src/Ai/Class/<Class>/` — per-class rotations, one directory per class.
+- `src/Ai/Dungeon/`, `src/Ai/Raid/` — encounter-specific strategies and multipliers.
+- `src/Ai/World/` — RPG, questing, travel, and other out-of-combat behaviour.
+- `src/Mgr/` — managers: guild, item, movement, security, talent, text, travel.
+- `src/Script/` — AzerothCore script hooks, including `WorldThr/` (world-thread
+  processor for cross-thread operations).
+- `src/Db/` — the module's own database pool.
+- `data/sql/playerbots/` — the `acore_playerbots` database; `data/sql/characters/`
+  and `data/sql/world/` — updates the module applies to the core databases.
+- `conf/playerbots.conf.dist` — every configuration option, with defaults and
+  comments. New options are documented here.
+- `apps/codestyle/codestyle-cpp.py` — the codestyle checker CI runs.
+- `.github/workflows/` — build matrix (Linux, macOS, Windows), C++ codestyle +
+  cppcheck, clang-format (advisory), PR source-branch enforcement.
 
-## Source map
+## Key constraints
 
-| Path | Responsibility |
-|---|---|
-| `src/Script/` | Module loader, AzerothCore hooks, command registration, secure login, world-thread operations |
-| `src/Bot/` | `PlayerbotAI`, bot holders and managers, random bot lifecycle, command server, factories, AI engine |
-| `src/Bot/Engine/` | Named contexts, strategy engine, queues, events, actions, triggers, values, multipliers |
-| `src/Ai/Base/` | Shared gameplay behavior and global named-object registrations |
-| `src/Ai/Class/` | Class and specialization behavior and class-specific context factories |
-| `src/Ai/Raid/` | Raid encounter strategies, actions, triggers, and multipliers |
-| `src/Ai/Dungeon/` | Dungeon encounter strategies, actions, and triggers |
-| `src/Ai/World/` | Open-world and RPG behavior |
-| `src/Mgr/` | Travel, movement, item, guild, talent, text, and security services |
-| `src/Db/` | Playerbot persistence and read-through repositories |
-| `src/PlayerbotAIConfig.*` | Runtime configuration loading and initialization orchestration |
-| `conf/playerbots.conf.dist` | User-facing configuration contract and defaults |
-| `data/sql/` | Dedicated playerbots schema, core database additions, base data, and updates |
-| `.github/workflows/` | Supported build and static validation paths |
+- **Triggers must be O(1).** They run every tick for every active strategy; no scans
+  of the quest log, inventory, nearby units, or group members without a cached value.
+- **Actions gate expensive work** behind `isUseful()` / `isPossible()`.
+- **No synchronous database queries on map threads.** Bot AI runs on map threads; a
+  query blocks every bot on that map and a crash takes the map down. Factory and
+  login paths on the world thread are the exception.
+- **Shared code must not branch on strategy names**, and one action does one job.
+- **Bot chat is translatable** via `GetBotTextOrDefault` plus a translation SQL update.
+- **Expensive or behaviour-changing features are opt-in** via `playerbots.conf.dist`.
+  Shared-code changes that ship alongside a gated feature are reviewed as if the
+  feature were off, because for most servers it will be.
 
-## Runtime model in one page
+## Persisting lessons
 
-### Startup
-
-`Addmod_playerbotsScripts()` in `src/Script/playerbots_loader.cpp` registers scripts through `AddPlayerbotsScripts()` in `src/Script/Playerbots.cpp`. Database loading registers `PlayerbotsDatabase`. Before world initialization, `PlayerbotAIConfig::Initialize()` creates or classifies random bot accounts, initializes managers and caches, builds all shared AI contexts, loads text and travel data, and initializes the spell repository.
-
-### Ownership
-
-- `PlayerbotsMgr` is the global registry that associates a player GUID with its `PlayerbotAI` and, for real players, its `PlayerbotMgr`.
-- `PlayerbotMgr` belongs to one real master and owns that master's active alt bots.
-- `RandomPlayerbotMgr` is a global `PlayerbotHolder` for autonomous bots and their population schedule.
-- `PlayerbotHolder::botLoading` prevents duplicate asynchronous login attempts.
-- A bot receives one `PlayerbotAI`, which owns combat, non-combat, and dead `Engine` instances.
-
-### Update paths
-
-- Map-thread path: `PlayerbotsPlayerScript::OnPlayerAfterUpdate()` calls `PlayerbotAI::UpdateAI()` and the master's `PlayerbotMgr::UpdateAI()`.
-- World-thread path: `PlayerbotsWorldScript::OnUpdate()` drains `PlayerbotWorldThreadProcessor` and updates `RandomPlayerbotMgr`.
-- Session path: custom playerbot hooks update random and master-owned bot sessions.
-
-Do not move behavior between these paths without proving the target AzerothCore API is safe on that thread.
-
-### AI decision path
-
-`PlayerbotAI::DoNextAction()` selects the engine for combat, non-combat, or dead state. `Engine::DoNextAction()` checks active triggers, queues their handlers plus default actions, orders candidates by relevance, evaluates `isUseful()`, applies active multipliers, then evaluates `isPossible()`, runs prerequisites, executes one action, and queues continuers or alternatives.
-
-Names are API keys. Lower-case space-separated strings connect strategies, triggers, actions, and values through creator maps. Parameterized objects use `name::qualifier`. Renaming a key requires searching all registrations, strategy bindings, chat commands, persisted values, and SQL data.
-
-## Non-negotiable invariants
-
-1. **Use the custom core.** Do not claim stock AzerothCore compatibility or validate only against it.
-2. **Respect thread ownership.** Bot decision work runs during map updates. Cross-player and shared world mutations may require `PlayerbotWorldThreadProcessor`. Follow an existing operation pattern instead of calling Group, Guild, LFG, battleground, or login APIs from an arbitrary thread.
-3. **Preserve one-owner registries.** A GUID must not acquire duplicate `PlayerbotAI`, `PlayerbotMgr`, holder membership, or pending login entries.
-4. **Keep engine states separate.** Combat, non-combat, and dead engines have independent strategy sets and queues. Register or activate behavior in every intended state explicitly.
-5. **Register every named object.** Implementing a class is insufficient. Add its creator to the correct global, class, raid, or dungeon context and connect it to a strategy.
-6. **Treat names as contracts.** Exact strings are used for factory lookup, qualifiers, commands, strategy persistence, and diagnostics.
-7. **Keep hot paths bounded.** Trigger checks, calculated values, target scans, and actions may run for thousands of bots. Reuse cached values and configured intervals. Avoid database queries in AI ticks.
-8. **Keep configuration synchronized.** A normal AI option requires a documented entry in `conf/playerbots.conf.dist`, a field in `src/PlayerbotAIConfig.h`, and loading or validation in `src/PlayerbotAIConfig.cpp`. A narrowly scoped script option may instead be read directly through `sConfigMgr`, as `Playerbots.Updates.EnableDatabases` is, but its distributed default and use-site default must still match.
-9. **Use the correct database.** Distinguish `PlayerbotsDatabase`, `CharacterDatabase`, `WorldDatabase`, and `LoginDatabase`. Do not place or query data in a convenient but incorrect schema.
-10. **Make SQL updates forward-only and updater-compatible.** Put playerbots migrations in `data/sql/playerbots/updates/` using the established date sequence. Keep `custom/` SQL re-applicable.
-11. **Preserve localized text behavior.** User-visible bot text belongs in `ai_playerbot_texts` and related update SQL when the existing text manager is used. Preserve default-locale fallback and placeholders.
-12. **Do not weaken control boundaries.** Bot ownership and commands pass through `PlayerbotSecurity`, account-link checks, chat filters, and login collision handling.
-13. **Document cross-cutting changes.** Any feature that changes ownership, lifecycle, threading, named-object registration, configuration, SQL, packet flow, or subsystem interaction must update `.docs` in the same change.
-
-## Change workflow for agents
-
-1. Read this file and the relevant `.docs` pages.
-2. Trace the existing entry point through callers, named registrations, configuration, and persistence before editing.
-3. Search exact string keys as well as C++ symbols.
-4. Identify the execution thread and object owner for each changed path.
-5. Prefer an existing neighboring pattern from the same scope: global, class, raid, dungeon, manager, or world script.
-6. Implement the smallest complete vertical slice, including registration, configuration, SQL, and text where applicable.
-7. Update an existing feature or subsystem document. For a new feature, copy `.docs/templates/feature.md` into `.docs/features/<feature-name>.md` and add it to `.docs/features/README.md`.
-8. Verify formatting and compile against the custom core. Perform focused in-game validation when behavior cannot be covered automatically.
-9. Review the diff for lifetime, thread, performance, and migration risks.
-
-## Documentation contract
-
-Documentation is part of the implementation, not a retrospective note.
-
-Update documentation when any of these change:
-
-- Entry points, call order, ownership, lifetime, or logout behavior
-- Thread or queue boundaries
-- Strategy, trigger, action, value, multiplier, or named context registration
-- Configuration keys, defaults, validation, or reload behavior
-- Database tables, updater paths, caches, or localization keys
-- Commands, permissions, packets, or account-link behavior
-- Supported raids, dungeons, maps, classes, or subsystems
-- Build, formatting, static analysis, or manual verification steps
-
-Use `.docs/templates/subsystem.md` when replacing undocumented legacy knowledge with a subsystem page. Each page must say what owns the subsystem, how control and data enter it, what it calls, what persists, which thread it runs on, how to extend it, and how to verify it.
-
-## Verification
-
-There is no dedicated C++ unit-test suite in this repository. Use the narrowest relevant checks and then the supported full build when practical:
-
-- C++ formatting: `bash ./code_format.sh` in an environment with the expected `clang-format`
-- Codestyle: `python apps/codestyle/codestyle-cpp.py` using the workflow's arguments
-- Static analysis: `cppcheck --force --inline-suppr --suppressions-list=./.suppress.cppcheck src/`
-- Linux build: place this repository at `modules/mod-playerbots` in the custom core, run CMake from the core root, then build
-- Windows build: follow `.github/workflows/windows_build.yml`
-- macOS build: follow `.github/workflows/macos_build.yml`
-
-Always report what was and was not run. For behavior changes, record manual scenarios in the feature document and pull request, including bot type, class, map or encounter, command or trigger, expected behavior, observed behavior, and relevant load level.
-
-## Known caution areas
-
-- Bot login combines asynchronous character queries, fake `WorldSession` creation, and a queued world-thread completion operation. Preserve duplicate-login guards and object validity checks.
-- Logout touches holder maps, AI persistence, group cleanup, sessions, and player destruction. Treat changes as lifetime-sensitive.
-- The remote command server opens a configured TCP listener and is separate from normal chat command authorization. Treat exposure or command additions as security-sensitive.
-- Random bot startup can create accounts and characters, classify account types, build large item caches, load travel data, and schedule many logins. Avoid multiplying startup or login database work.
-- `conf/conf.sh.dist` references legacy `sql/...` assembler paths while repository SQL currently lives under `data/sql/...`. Verify parent-core installation behavior before changing either convention.
-- Several caches are derived data. Identify the authoritative source table or game data before writing directly to cache tables.
-- The public wiki is useful operator guidance but may be incomplete. Repository code and these versioned documents are the local engineering source of truth.
+When a user correction reveals a lesson that generalizes, offer to persist it into
+these docs (placement per `.agents/docs/README.md`).
